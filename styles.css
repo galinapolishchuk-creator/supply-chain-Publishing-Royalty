@@ -1,0 +1,193 @@
+import { useState } from 'react'
+import { works, totals } from './data'
+
+const accents = { A: '#E5484D', B: '#30A46C', C: '#3E63DD' }
+// Stable per-writer colour — identifies a writer across every work they appear in
+// (e.g. Writer A keeps the same colour in Work A, B and C).
+const writerColors = {
+  'Writer A': '#B07D1E',
+  'Writer B': '#6D4FC0',
+  'Writer C': '#C13B72',
+  'Writer D': '#1E8E84',
+}
+// Same identity-colour idea for publishers and agreements: one entity = one colour,
+// consistent across every work it appears in.
+const publisherColors = {
+  'Publisher ABC': '#1F6FB2',
+  'Publisher XYZ': '#B2521F',
+}
+const agreementColors = {
+  '001': '#3E7D2E',
+  '002': '#8A5A1F',
+}
+const money = (n) => '$' + n.toFixed(2)
+const uniq = (a) => [...new Set(a)]
+const PANEL_W = 190
+
+// Column definitions per view. `breakdown` adds the percentage fields
+// that explain how each price is formed (split %, writer share %, publisher share %).
+const COLS = {
+  summary: [
+    { key: 'writer', label: 'Writer', w: 180, kind: 'writer' },
+    { key: 'gross', label: 'Gross', w: 120, kind: 'num' },
+    { key: 'net', label: "Writers' Net", w: 130, kind: 'num' },
+    { key: 'publisher', label: 'Publisher', w: 170, kind: 'publisher' },
+    { key: 'pub', label: 'Publisher Net', w: 130, kind: 'num' },
+  ],
+  breakdown: [
+    { key: 'writer', label: 'Writer', w: 170, kind: 'writer' },
+    { key: 'split', label: 'Split %', w: 72, kind: 'pct', tone: 'pink' },
+    { key: 'gross', label: 'Gross', w: 100, kind: 'num' },
+    { key: 'writerShare', label: 'Writer Share %', w: 104, kind: 'pct', tone: 'green' },
+    { key: 'net', label: "Writers' Net", w: 110, kind: 'num' },
+    { key: 'publisher', label: 'Publisher', w: 150, kind: 'publisher' },
+    { key: 'pubShare', label: 'Pub. Share %', w: 100, kind: 'pct', tone: 'green' },
+    { key: 'pub', label: 'Publisher Net', w: 110, kind: 'num' },
+  ],
+}
+
+function Filter({ label, value, onChange, options }) {
+  return (
+    <label className="filter">
+      <span className="filter-label">{label}</span>
+      <select value={value} onChange={(e) => onChange(e.target.value)}>
+        <option value="all">All</option>
+        {options.map(([val, lab]) => (
+          <option key={val} value={val}>{lab}</option>
+        ))}
+      </select>
+    </label>
+  )
+}
+
+function ColHead({ cols }) {
+  return (
+    <div className="colhead">
+      <div style={{ width: PANEL_W, flex: 'none' }} />
+      {cols.map((c) => (
+        <div key={c.key} className={'ch ' + c.kind} style={{ width: c.w, flex: 'none' }}>
+          {c.kind === 'publisher' ? '' : c.label}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function WorkCard({ work, cols }) {
+  const accent = accents[work.id] || '#6b7280'
+  const pc = publisherColors[work.publisher] || '#6b7280'
+  const ac = agreementColors[work.agreement] || '#6b7280'
+  const n = work.writers.length
+  const template = cols.map((c) => c.w + 'px').join(' ')
+  const pubIndex = cols.findIndex((c) => c.kind === 'publisher')
+
+  return (
+    <section className="card" style={{ borderLeftColor: accent }}>
+      <div className="panel" style={{ width: PANEL_W }}>
+        <div className="workbadge" style={{ background: accent + '1A', color: accent }}>{work.name}</div>
+        <div className="amount">{money(work.gross)}</div>
+        <div className="agreement" style={{ background: ac + '1A', color: ac }}>Agreement {work.agreement}</div>
+        <div className="wcount">{n} {n === 1 ? 'writer' : 'writers'}</div>
+      </div>
+
+      <div className="body" style={{ gridTemplateColumns: template }}>
+        {work.writers.map((wr, r) =>
+          cols.map((c, ci) => {
+            if (c.kind === 'publisher') return null
+            const first = r === 0 ? ' firstRow' : ''
+            const style = { gridColumn: ci + 1, gridRow: r + 1 }
+            if (c.kind === 'writer')
+              return (
+                <div key={c.key} className={'cell writer' + first} style={style}>
+                  <span className="wbar" style={{ background: writerColors[wr.name] || '#6b7280' }}>{wr.name}</span>
+                </div>
+              )
+            if (c.kind === 'pct')
+              return (
+                <div key={c.key} className={'cell pctcell' + first} style={style}>
+                  <span className={'chip ' + c.tone}>{wr[c.key]}%</span>
+                </div>
+              )
+            return (
+              <div key={c.key} className={'cell num' + first} style={style}>{money(wr[c.key])}</div>
+            )
+          })
+        )}
+        <div className="cell publisher" style={{ gridColumn: pubIndex + 1, gridRow: `1 / span ${n}`, background: pc + '14', color: pc, borderColor: pc + '33' }}>
+          {work.publisher}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+export default function App() {
+  const [view, setView] = useState('summary')
+  const [fWork, setFWork] = useState('all')
+  const [fWriter, setFWriter] = useState('all')
+  const [fPublisher, setFPublisher] = useState('all')
+  const [fAgreement, setFAgreement] = useState('all')
+
+  const writerOpts = uniq(works.flatMap((w) => w.writers.map((x) => x.name))).sort()
+  const publisherOpts = uniq(works.map((w) => w.publisher))
+  const agreementOpts = uniq(works.map((w) => w.agreement))
+  const cols = COLS[view]
+
+  const visible = works.filter(
+    (w) =>
+      (fWork === 'all' || w.id === fWork) &&
+      (fWriter === 'all' || w.writers.some((x) => x.name === fWriter)) &&
+      (fPublisher === 'all' || w.publisher === fPublisher) &&
+      (fAgreement === 'all' || w.agreement === fAgreement)
+  )
+
+  const anyFilter =
+    fWork !== 'all' || fWriter !== 'all' || fPublisher !== 'all' || fAgreement !== 'all'
+  const reset = () => {
+    setFWork('all'); setFWriter('all'); setFPublisher('all'); setFAgreement('all')
+  }
+
+  return (
+    <div className="page">
+      <header className="head">
+        <h1>Publishing Royalty Breakdown</h1>
+        <p>A detailed view of how publishing earnings are calculated and distributed.</p>
+      </header>
+
+      <div className="filters">
+        <Filter label="Work" value={fWork} onChange={setFWork} options={works.map((w) => [w.id, w.name])} />
+        <Filter label="Writer" value={fWriter} onChange={setFWriter} options={writerOpts.map((n) => [n, n])} />
+        <Filter label="Publisher" value={fPublisher} onChange={setFPublisher} options={publisherOpts.map((n) => [n, n])} />
+        <Filter label="Agreement" value={fAgreement} onChange={setFAgreement} options={agreementOpts.map((n) => [n, 'Agreement ' + n])} />
+        {anyFilter && <button className="reset" onClick={reset}>Reset filters</button>}
+      </div>
+
+      <div className="subbar">
+        <div className="summary">
+          <div className="stat"><div className="stat-value">{money(totals.gross)}</div><div className="stat-label">GROSS</div></div>
+          <div className="stat"><div className="stat-value">{money(totals.net)}</div><div className="stat-label">WRITERS' NET</div></div>
+          <div className="stat"><div className="stat-value">{money(totals.pub)}</div><div className="stat-label">PUBLISHER NET</div></div>
+        </div>
+        <div className="seg" role="tablist">
+          <button className={view === 'summary' ? 'on' : ''} onClick={() => setView('summary')}>Summary</button>
+          <button className={view === 'breakdown' ? 'on' : ''} onClick={() => setView('breakdown')}>Breakdown</button>
+        </div>
+      </div>
+
+      <div className="scroll">
+        <ColHead cols={cols} />
+        {visible.length === 0 ? (
+          <div className="empty">No works match the selected filters.</div>
+        ) : (
+          <div className="cards">
+            {visible.map((w) => <WorkCard key={w.id} work={w} cols={cols} />)}
+          </div>
+        )}
+      </div>
+
+      <p className="note">
+        {visible.length} of {works.length} works shown · <b>Summary</b> = sums only · <b>Breakdown</b> = with the % that form each price · totals above stay global.
+      </p>
+    </div>
+  )
+}
